@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,9 +13,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { AlertCircle, CheckCircle2, FileVideo, UploadCloud, X } from "lucide-react"
+import { AlertCircle, CheckCircle2, FileVideo, UploadCloud, X, Loader2 } from "lucide-react"
+import { uploadVideo, getVideoStatus } from "@/lib/api/video.api"
 
-type UploadStatus = "idle" | "uploading" | "success" | "error"
+type UploadStatus = "idle" | "uploading" | "queued" | "processing" | "success" | "error"
+
+interface VideoJobState {
+  id: string;
+  status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
+}
 
 export default function VideoUploader() {
   // Form State
@@ -23,18 +29,19 @@ export default function VideoUploader() {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   
-  // Upload Status State
+  // Upload & Queue Status State
   const [status, setStatus] = useState<UploadStatus>("idle")
   const [progress, setProgress] = useState(0)
   const [errorMessage, setErrorMessage] = useState("")
+  const [activeJob, setActiveJob] = useState<VideoJobState | null>(null)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pollingRef = useRef<NodeJS.Timeout | null>(null)
 
   // Handle File Selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0]
-      // Ensure it's a video file
       if (!selectedFile.type.startsWith("video/")) {
         setErrorMessage("Please select a valid video file (MP4, WebM, etc.).")
         setStatus("error")
@@ -46,7 +53,7 @@ export default function VideoUploader() {
     }
   }
 
-  // Clear selected file
+  // Clear selected file & reset state
   const resetForm = () => {
     setFile(null)
     setTitle("")
@@ -54,31 +61,92 @@ export default function VideoUploader() {
     setStatus("idle")
     setProgress(0)
     setErrorMessage("")
+    setActiveJob(null)
+    if (pollingRef.current) clearInterval(pollingRef.current)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  // Simulated Upload Logic
-  const handleUpload = (e: React.FormEvent) => {
+  // Polling Effect for Background Worker Consistency
+  useEffect(() => {
+    if (!activeJob || activeJob.status === "COMPLETED" || activeJob.status === "FAILED") {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+      return
+    }
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        // Fetch current status from backend database
+        const res = await getVideoStatus(activeJob.id)
+        const currentDbStatus = res.data.status
+
+        setActiveJob((prev) => prev ? { ...prev, status: currentDbStatus } : null)
+
+        if (currentDbStatus === "PROCESSING") setStatus("processing")
+        if (currentDbStatus === "COMPLETED") {
+          setStatus("success")
+          if (pollingRef.current) clearInterval(pollingRef.current)
+        }
+        if (currentDbStatus === "FAILED") {
+          setStatus("error")
+          setErrorMessage("Background video processing failed during transcoding.")
+          if (pollingRef.current) clearInterval(pollingRef.current)
+        }
+      } catch (err) {
+        console.error("Failed to sync status with server:", err)
+      }
+    }, 3000) 
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
+  }, [activeJob?.id, activeJob?.status])
+
+  // Real Network Upload Logic
+  const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!file || !title || !description) return
 
+    // 1. Immediately lock UI and set loading state
     setStatus("uploading")
     setProgress(0)
     setErrorMessage("")
 
-    // Simulate network chunk uploading
-    let currentProgress = 0
-    const interval = setInterval(() => {
-      currentProgress += 15
-      
-      if (currentProgress <= 90) {
-        setProgress(currentProgress)
-      } else {
-        clearInterval(interval)
-        
+    try {
+      const formData = new FormData()
+      formData.append("title", title)
+      formData.append("description", description) // Fixed: Attaching text, not binary file
+      formData.append("file", file) // Ensure key matches your backend multer/streamifier config
+
+      // 2. Call upload API (uploadVideo accepts a single argument)
+      const response = await uploadVideo(formData)
+      // Ensure progress shows complete on finish
+      setProgress(100)
+
+      // 3. Upload complete, transition to background queue synchronization
+      const uploadResult = response as unknown as {
+        video?: { _id: string }
+        data?: { video?: { _id: string } }
       }
-    }, 400)
+      const createdVideo = uploadResult.video || uploadResult.data?.video
+      if (createdVideo) {
+        setActiveJob({ id: createdVideo._id, status: "QUEUED" })
+        setStatus("queued")
+      } else {
+        setStatus("success")
+      }
+
+    } catch (error: any) {
+      console.error("Upload Error:", error)
+      setStatus("error")
+      setErrorMessage(
+        error.response?.data?.message || 
+        error.message || 
+        "Failed to upload video to server."
+      )
+    }
   }
+
+  const isFormDisabled = status === "uploading" || status === "queued" || status === "processing"
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-muted/40">
@@ -115,7 +183,7 @@ export default function VideoUploader() {
                     accept="video/*"
                     className="hidden"
                     onChange={handleFileChange}
-                    disabled={status === "uploading"}
+                    disabled={isFormDisabled}
                   />
                 </div>
               ) : (
@@ -131,7 +199,7 @@ export default function VideoUploader() {
                       </p>
                     </div>
                   </div>
-                  {status !== "uploading" && (
+                  {!isFormDisabled && (
                     <Button
                       type="button"
                       variant="ghost"
@@ -153,7 +221,7 @@ export default function VideoUploader() {
                 placeholder="Title of your video"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                disabled={status === "uploading"}
+                disabled={isFormDisabled}
                 required
               />
             </div>
@@ -162,15 +230,15 @@ export default function VideoUploader() {
               <Label htmlFor="description">Description</Label>
               <Input
                 id="description"
-                placeholder="write a description of your video"
+                placeholder="Write a description of your video"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                disabled={status === "uploading"}
+                disabled={isFormDisabled}
                 required
               />
             </div>
 
-            {/* 3. Progress Bar (Visible only when uploading) */}
+            {/* 3. Real-Time Network Progress Bar */}
             {status === "uploading" && (
               <div className="space-y-2 pt-2 animate-in fade-in-50">
                 <div className="flex justify-between text-xs text-muted-foreground font-medium">
@@ -181,7 +249,24 @@ export default function VideoUploader() {
               </div>
             )}
 
-            {/* 4. Error Message Banner */}
+            {/* 4. Background Queue Processing States */}
+            {(status === "queued" || status === "processing") && (
+              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-3 text-blue-600 dark:text-blue-400 animate-in fade-in-50">
+                <Loader2 className="w-5 h-5 shrink-0 animate-spin" />
+                <div className="text-sm">
+                  <p className="font-semibold capitalize">
+                    {status === "queued" ? "In Queue..." : "Processing Video..."}
+                  </p>
+                  <p className="text-xs opacity-90">
+                    {status === "queued" 
+                      ? "Your video is waiting for an available worker." 
+                      : "Transcoding and generating optimized streaming formats."}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 5. Error Message Banner */}
             {status === "error" && (
               <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-3 text-destructive animate-in fade-in-50">
                 <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -192,13 +277,13 @@ export default function VideoUploader() {
               </div>
             )}
 
-            {/* 5. Success Message Banner */}
+            {/* 6. Success Message Banner */}
             {status === "success" && (
               <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-3 text-green-600 dark:text-green-400 animate-in fade-in-50">
                 <CheckCircle2 className="w-5 h-5 shrink-0" />
                 <div className="text-sm">
                   <p className="font-semibold">Upload Complete!</p>
-                  <p className="text-xs opacity-90">Your video is now ready to be viewed.</p>
+                  <p className="text-xs opacity-90">Your video has been processed and is ready to view.</p>
                 </div>
               </div>
             )}
@@ -206,9 +291,9 @@ export default function VideoUploader() {
           </CardContent>
 
           <CardFooter className="flex justify-end gap-2 bg-muted/20 py-3 px-6 border-t">
-            {status === "success" ? (
+            {status === "success" || status === "error" ? (
               <Button type="button" onClick={resetForm} className="w-full">
-                Upload Another Video
+                {status === "error" ? "Try Again" : "Upload Another Video"}
               </Button>
             ) : (
               <>
@@ -216,15 +301,19 @@ export default function VideoUploader() {
                   type="button"
                   variant="outline"
                   onClick={resetForm}
-                  disabled={!file && status === "idle"}
+                  disabled={isFormDisabled || (!file && status === "idle")}
                 >
                   Reset
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!file || !title || !description || status === "uploading"}
+                  disabled={!file || !title || !description || isFormDisabled}
                 >
-                  {status === "uploading" ? "Uploading..." : status === "error" ? "Retry Upload" : "Start Upload"}
+                  {status === "uploading" 
+                    ? "Uploading..." 
+                    : status === "queued" || status === "processing" 
+                    ? "Processing..." 
+                    : "Start Upload"}
                 </Button>
               </>
             )}

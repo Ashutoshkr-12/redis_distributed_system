@@ -1,31 +1,92 @@
 import { Worker } from "bullmq";
+
 import Redis from "ioredis";
-import { redis } from "../../index.js";
+
+import ffmpeg from "fluent-ffmpeg";
+
+import ffmpegPath from "ffmpeg-static";
+
+import axios from "axios";
+
+import fs from "fs";
+
+import path from "path";
+
+ffmpeg.setFfmpegPath(ffmpegPath);
+
+const connection = new Redis({
+  host: "127.0.0.1",
+  port: 6379,
+
+  maxRetriesPerRequest: null,
+});
 
 const worker = new Worker(
   "video-processing",
+
   async (job) => {
-    console.log("Processing Job:", job.data);
+    const { videoUrl } = job.data;
+
+    console.log("Processing:", videoUrl);
 
     /*
-      STEPS:
-      1. Download video
-      2. Compress
-      3. Generate thumbnail
-      4. Upload processed files
-      5. Update DB
+      download temp file
     */
+
+    const inputPath =
+      "./temp/input.mp4";
+
+    const outputThumbnail =
+      "./temp/thumb.jpg";
+
+    /*
+      download video
+    */
+
+    const response = await axios({
+      url: videoUrl,
+
+      method: "GET",
+
+      responseType: "stream",
+    });
+
+    const writer =
+      fs.createWriteStream(inputPath);
+
+    response.data.pipe(writer);
+
+    await new Promise((resolve, reject) => {
+      writer.on("finish", resolve);
+
+      writer.on("error", reject);
+    });
+
+    /*
+      generate thumbnail
+    */
+
+    await new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .screenshots({
+          timestamps: ["2"],
+
+          filename: "thumb.jpg",
+
+          folder: "./temp",
+        })
+
+        .on("end", resolve)
+
+        .on("error", reject);
+    });
+
+    console.log("Thumbnail generated");
   },
 
   {
-    redis,
+    connection,
+
+    concurrency: 3,
   }
 );
-
-worker.on("completed", (job) => {
-  console.log(`Job ${job.id} completed`);
-});
-
-worker.on("failed", (job, err) => {
-  console.log(`Job failed`, err);
-});

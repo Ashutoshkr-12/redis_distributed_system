@@ -1,31 +1,74 @@
+import streamifier from "streamifier";
+import cloudinary from "../config/cloudinary.js";
 import Video from "../models/video.model.js";
-import { videoQueue } from "../queue/video.queue.js";
+import { videoQueue } from "../redis/queues/video.queue.js";
 
-export const uploadVideo = async (req, res) => {
+export const uploadVideo = async (
+  req,
+  res
+) => {
   try {
-    const { title, originalVideoUrl } = req.body;
-    const video = await Video.create({
-      title,
-      originalVideoUrl,
-      status: "QUEUED",
-    });
+    
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Video required",
+      });
+    }
 
-    await videoQueue.add("process-video", {
-      videoId: video._id,
-      originalVideoUrl,
-    });
+    const uploadStream =
+      cloudinary.uploader.upload_stream(
+        {
+          resource_type: "video",
+          folder: "videos",
+        },
 
-    res.status(201).json({
-      success: true,
-      message: "Video Fetched",
-      data: video,
-    });
+        async (error, result) => {
+          if (error) {
+            return res.status(500).json({
+              success: false,
+              message: "Cloudinary upload failed",
+            });
+          }
+          const video = await Video.create({
+            title: req.body.title,
+            description: req.body.description,
+            originalVideo: result.secure_url,
+
+            status: "QUEUED",
+          });
+
+          await videoQueue.add(
+            "process-video",
+
+            {
+              videoId: video._id,
+
+              videoUrl: result.secure_url,
+            },
+
+            {
+              jobId: video._id.toString(),
+            }
+          );
+
+          return res.status(201).json({
+            success: true,
+
+            video,
+          });
+        }
+      );
+
+    streamifier
+      .createReadStream(req.file.buffer)
+      .pipe(uploadStream);
   } catch (error) {
     console.log(error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: "Server Error",
+      message: "Internal Server Error",
     });
   }
 };

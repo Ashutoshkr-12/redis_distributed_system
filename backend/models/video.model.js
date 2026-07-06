@@ -1,11 +1,8 @@
-import mongoose, { model, Schema } from "mongoose";
+import mongoose from "mongoose";
 
 const videoSchema = new mongoose.Schema(
   {
-    title: {type: String, required: true},
-    originalVideoUrl: {type: String},
-    compressedVideoUrl: {type: String},
-    thumbnailUrl: {type: string},
+    title: String,
     status: {
       type: String,
       enum: [
@@ -15,14 +12,21 @@ const videoSchema = new mongoose.Schema(
         "COMPLETED",
         "FAILED",
       ],
+
       default: "UPLOADING",
     },
 
-    failureReason: {type: String},
+    originalVideo: String,
+    description: { type: String},
+    compressedVideo: String,
+    thumbnail: String,
+    failureReason: String,
   },
   { timestamps: true }
 );
 
-const Video = model("Video", videoSchema);
 
-export default Video;
+export default mongoose.model(
+  "Video",
+  videoSchema
+);

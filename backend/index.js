@@ -1,4 +1,6 @@
-import { app } from "./app";
+import { app } from "./app.js";
+import dotenv from 'dotenv';
+dotenv.config('./env');
 import http from 'http';
 import { Server } from "socket.io";
 import cors from 'cors';
@@ -6,7 +8,7 @@ import connectDB from './config/db.js';
 
 const server = http.createServer(app);
 
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT;
 const allowrdOrigins = ["*"]
 
 export const io = new Server(server,{

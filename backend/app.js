@@ -1,7 +1,5 @@
 import express from 'express';
 import Redis from 'ioredis';
-import dotenv from 'dotenv';
-dotenv.config();
 import cors from 'cors';
 import videoRoutes from "./routes/video.route.js"
 import router from './routes/video.route.js';

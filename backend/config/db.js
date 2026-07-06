@@ -3,12 +3,8 @@ import mongoose from "mongoose";
 
 const connectDB = async() => {
     try {
-        const url = 'mongodb://localhost:27017/mydatabase';
-
-        if (mongoose.connection.readyState === 0) {
-            await mongoose.connect(url);
+          const connection =  await mongoose.connect(`${process.env.MONGODB_URI}`);
             console.log("DB Connected")
-        }
     }
     catch (error) {
         console.error('Error occurred while fetching data from MongoDB:', error);
