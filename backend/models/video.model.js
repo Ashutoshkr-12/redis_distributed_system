@@ -5,17 +5,17 @@ const videoSchema = new mongoose.Schema(
     title: String,
     status: {
       type: String,
-      enum: [
-        "UPLOADING",
-        "QUEUED",
-        "PROCESSING",
-        "COMPLETED",
-        "FAILED",
-      ],
+     enum: [
+   "QUEUED",
+   "DOWNLOADING",
+   "GENERATING_THUMBNAIL",
+   "UPLOADING_THUMBNAIL",
+   "COMPLETED",
+   "FAILED"
+  ],
 
-      default: "UPLOADING",
+      default: "QUEUED",
     },
-
     originalVideo: String,
     description: { type: String},
     compressedVideo: String,
@@ -26,7 +26,9 @@ const videoSchema = new mongoose.Schema(
 );
 
 
-export default mongoose.model(
+const Video =  mongoose.model(
   "Video",
   videoSchema
 );
+
+export default Video;

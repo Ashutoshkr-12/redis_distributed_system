@@ -1,10 +1,7 @@
-"use client"
+"use client";
 
-import { useState, useRef, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Progress } from "@/components/ui/progress"
+import { useEffect, useRef, useState } from "react";
+import axios from "axios";
 import {
   Card,
   CardContent,
@@ -12,314 +9,436 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { AlertCircle, CheckCircle2, FileVideo, UploadCloud, X, Loader2 } from "lucide-react"
-import { uploadVideo, getVideoStatus } from "@/lib/api/video.api"
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 
-type UploadStatus = "idle" | "uploading" | "queued" | "processing" | "success" | "error"
+import {
+  UploadCloud,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  FileVideo,
+  X,
+} from "lucide-react";
 
-interface VideoJobState {
-  id: string;
-  status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
+type VideoStatus =
+  | "IDLE"
+  | "UPLOADING"
+  | "QUEUED"
+  | "DOWNLOADING"
+  | "GENERATING_THUMBNAIL"
+  | "UPLOADING_THUMBNAIL"
+  | "COMPLETED"
+  | "FAILED";
+
+interface Video {
+  _id: string;
+
+  title: string;
+
+  status: VideoStatus;
+
+  thumbnail?: string;
+
+  originalVideo?: string;
+
+  compressedVideo?: string;
+
+  failureReason?: string;
 }
 
+const processingSteps = [
+  "QUEUED",
+  "DOWNLOADING",
+  "GENERATING_THUMBNAIL",
+  "UPLOADING_THUMBNAIL",
+  "COMPLETED",
+];
+
 export default function VideoUploader() {
-  // Form State
-  const [file, setFile] = useState<File | null>(null)
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  
-  // Upload & Queue Status State
-  const [status, setStatus] = useState<UploadStatus>("idle")
-  const [progress, setProgress] = useState(0)
-  const [errorMessage, setErrorMessage] = useState("")
-  const [activeJob, setActiveJob] = useState<VideoJobState | null>(null)
-  
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const pollingRef = useRef<NodeJS.Timeout | null>(null)
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [video, setVideo] = useState<Video | null>(null);
+  const [uiStatus, setUiStatus] = useState<VideoStatus>("IDLE");
+  const [errorMessage, setErrorMessage] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Handle File Selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0]
-      if (!selectedFile.type.startsWith("video/")) {
-        setErrorMessage("Please select a valid video file (MP4, WebM, etc.).")
-        setStatus("error")
-        return
+const handleUpload = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!file) return;
+  try {
+    setUiStatus("UPLOADING");
+    setErrorMessage("");
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append(
+      "description",
+      description
+    );
+    
+    formData.append("video", file);
+    const response = await fetch(
+      "http://localhost:8000/api/upload-video",
+      {
+        method: "POST",
+        body: formData,
       }
-      setFile(selectedFile)
-      setStatus("idle")
-      setErrorMessage("")
+    );
+    
+    if (!response.ok) {
+      const errorData =
+        await response.json();
+
+      throw new Error(
+        errorData.message ||
+          "Upload failed"
+      );
     }
-  }
 
-  // Clear selected file & reset state
-  const resetForm = () => {
-    setFile(null)
-    setTitle("")
-    setDescription("")
-    setStatus("idle")
-    setProgress(0)
-    setErrorMessage("")
-    setActiveJob(null)
-    if (pollingRef.current) clearInterval(pollingRef.current)
-    if (fileInputRef.current) fileInputRef.current.value = ""
-  }
+    const data = await response.json();
 
-  // Polling Effect for Background Worker Consistency
+    console.log("UPLOAD DATA:", data);
+
+    setUploadProgress(100);
+
+    setVideo(data.video);
+
+    setUiStatus("QUEUED");
+  } catch (error: any) {
+    console.log(
+      "UPLOAD ERROR:",
+      error
+    );
+
+    setUiStatus("FAILED");
+
+    setErrorMessage(
+      error.message ||
+        "Upload failed"
+    );
+  }
+};
+
+
   useEffect(() => {
-    if (!activeJob || activeJob.status === "COMPLETED" || activeJob.status === "FAILED") {
-      if (pollingRef.current) clearInterval(pollingRef.current)
-      return
+    if (!video?._id) return;
+
+    if (video.status === "COMPLETED" || video.status === "FAILED") {
+      return;
     }
 
-    pollingRef.current = setInterval(async () => {
-      try {
-        // Fetch current status from backend database
-        const res = await getVideoStatus(activeJob.id)
-        const currentDbStatus = res.data.status
+pollingRef.current = setInterval(
+  async () => {
+    try {
+      const response =
+        await fetch(
+          `http://localhost:8000/api/video/${video._id}`
+        );
 
-        setActiveJob((prev) => prev ? { ...prev, status: currentDbStatus } : null)
-
-        if (currentDbStatus === "PROCESSING") setStatus("processing")
-        if (currentDbStatus === "COMPLETED") {
-          setStatus("success")
-          if (pollingRef.current) clearInterval(pollingRef.current)
-        }
-        if (currentDbStatus === "FAILED") {
-          setStatus("error")
-          setErrorMessage("Background video processing failed during transcoding.")
-          if (pollingRef.current) clearInterval(pollingRef.current)
-        }
-      } catch (err) {
-        console.error("Failed to sync status with server:", err)
+      if (!response.ok) {
+        throw new Error(
+          "Failed to fetch status"
+        );
       }
-    }, 3000) 
+
+      const data =
+        await response.json();
+
+      const updatedVideo =
+        data.video;
+
+      console.log(
+        "UPDATED VIDEO:",
+        updatedVideo
+      );
+
+      setVideo(updatedVideo);
+
+      setUiStatus(
+        updatedVideo.status
+      );
+
+      if (
+        updatedVideo.status ===
+          "COMPLETED" ||
+        updatedVideo.status ===
+          "FAILED"
+      ) {
+        if (pollingRef.current) {
+          clearInterval(
+            pollingRef.current
+          );
+        }
+      }
+    } catch (error) {
+      console.log(
+        "POLLING ERROR:",
+        error
+      );
+    }
+  },
+
+  3000
+);
+
 
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current)
-    }
-  }, [activeJob?.id, activeJob?.status])
-
-  // Real Network Upload Logic
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!file || !title || !description) return
-
-    // 1. Immediately lock UI and set loading state
-    setStatus("uploading")
-    setProgress(0)
-    setErrorMessage("")
-
-    try {
-      const formData = new FormData()
-      formData.append("title", title)
-      formData.append("description", description) // Fixed: Attaching text, not binary file
-      formData.append("file", file) // Ensure key matches your backend multer/streamifier config
-
-      // 2. Call upload API (uploadVideo accepts a single argument)
-      const response = await uploadVideo(formData)
-      // Ensure progress shows complete on finish
-      setProgress(100)
-
-      // 3. Upload complete, transition to background queue synchronization
-      const uploadResult = response as unknown as {
-        video?: { _id: string }
-        data?: { video?: { _id: string } }
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
       }
-      const createdVideo = uploadResult.video || uploadResult.data?.video
-      if (createdVideo) {
-        setActiveJob({ id: createdVideo._id, status: "QUEUED" })
-        setStatus("queued")
-      } else {
-        setStatus("success")
-      }
+    };
+  }, [video?._id, video?.status]);
 
-    } catch (error: any) {
-      console.error("Upload Error:", error)
-      setStatus("error")
-      setErrorMessage(
-        error.response?.data?.message || 
-        error.message || 
-        "Failed to upload video to server."
-      )
+  const resetForm = () => {
+    setFile(null);
+
+    setTitle("");
+
+    setDescription("");
+
+    setVideo(null);
+
+    setUiStatus("IDLE");
+
+    setUploadProgress(0);
+
+    setErrorMessage("");
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
-  }
 
-  const isFormDisabled = status === "uploading" || status === "queued" || status === "processing"
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+  };
+
+  const isDisabled =
+    uiStatus !== "IDLE" && uiStatus !== "FAILED" && uiStatus !== "COMPLETED";
+
+  const progressValue =
+    uiStatus === "QUEUED"
+      ? 20
+      : uiStatus === "DOWNLOADING"
+        ? 40
+        : uiStatus === "GENERATING_THUMBNAIL"
+          ? 70
+          : uiStatus === "UPLOADING_THUMBNAIL"
+            ? 90
+            : uiStatus === "COMPLETED"
+              ? 100
+              : uploadProgress;
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-muted/40">
-      <Card className="w-full max-w-lg shadow-lg">
+    <div className="min-h-screen bg-muted/40 flex items-center justify-center p-6">
+      <Card className="w-full max-w-2xl shadow-xl">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold">Upload Video</CardTitle>
+          <CardTitle>Distributed Video Processing</CardTitle>
+
           <CardDescription>
-            Add your video details and upload it to the platform.
+            Upload video and process it asynchronously using Redis + BullMQ
+            workers.
           </CardDescription>
         </CardHeader>
 
         <form onSubmit={handleUpload}>
           <CardContent className="space-y-6">
-            
-            {/* 1. File Drop / Select Area */}
-            <div className="space-y-2">
-              <Label htmlFor="video-file">Video File</Label>
-              {!file ? (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-muted-foreground/25 hover:border-primary/50 rounded-lg p-8 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors bg-background/50"
-                >
-                  <UploadCloud className="w-10 h-10 text-muted-foreground" />
-                  <p className="text-sm font-medium text-foreground">
-                    Click to select a video file
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    MP4, WebM or OGG (MAX. 500MB)
-                  </p>
-                  <Input
-                    ref={fileInputRef}
-                    id="video-file"
-                    type="file"
-                    accept="video/*"
-                    className="hidden"
-                    onChange={handleFileChange}
-                    disabled={isFormDisabled}
-                  />
-                </div>
-              ) : (
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-background">
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="p-2 bg-primary/10 rounded">
-                      <FileVideo className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="truncate">
-                      <p className="text-sm font-medium truncate">{file.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {(file.size / (1024 * 1024)).toFixed(2)} MB
-                      </p>
-                    </div>
-                  </div>
-                  {!isFormDisabled && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setFile(null)}
-                    >
-                      <X className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
+            {!file ? (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed rounded-lg p-10 flex flex-col items-center justify-center cursor-pointer hover:border-primary transition"
+              >
+                <UploadCloud className="w-12 h-12 text-muted-foreground mb-3" />
 
-            {/* 2. Metadata Inputs */}
+                <p className="font-medium">Click to upload video</p>
+
+                <p className="text-sm text-muted-foreground">MP4, MOV, WEBM</p>
+
+                <Input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const selected = e.target.files?.[0];
+
+                    if (selected) {
+                      setFile(selected);
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="flex items-center justify-between border rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <FileVideo className="w-8 h-8 text-primary" />
+
+                  <div>
+                    <p className="font-medium">{file.name}</p>
+
+                    <p className="text-xs text-muted-foreground">
+                      {(file.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                </div>
+
+                {!isDisabled && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setFile(null)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label htmlFor="title">Video Title</Label>
+              <Label>Title</Label>
+
               <Input
-                id="title"
-                placeholder="Title of your video"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                disabled={isFormDisabled}
-                required
+                disabled={isDisabled}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label>Description</Label>
+
               <Input
-                id="description"
-                placeholder="Write a description of your video"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                disabled={isFormDisabled}
-                required
+                disabled={isDisabled}
               />
             </div>
 
-            {/* 3. Real-Time Network Progress Bar */}
-            {status === "uploading" && (
-              <div className="space-y-2 pt-2 animate-in fade-in-50">
-                <div className="flex justify-between text-xs text-muted-foreground font-medium">
-                  <span>Uploading to server...</span>
-                  <span>{progress}%</span>
+            {uiStatus !== "IDLE" && uiStatus !== "FAILED" && (
+              <div className="space-y-3">
+                <Progress value={progressValue} />
+
+                <div className="text-sm text-muted-foreground">
+                  {uiStatus === "UPLOADING" && "Uploading video..."}
+
+                  {uiStatus === "QUEUED" && "Waiting for worker..."}
+
+                  {uiStatus === "DOWNLOADING" && "Worker downloading video..."}
+
+                  {uiStatus === "GENERATING_THUMBNAIL" &&
+                    "Generating thumbnail..."}
+
+                  {uiStatus === "UPLOADING_THUMBNAIL" &&
+                    "Uploading thumbnail..."}
+
+                  {uiStatus === "COMPLETED" && "Video processing completed"}
                 </div>
-                <Progress value={progress} className="h-2 w-full" />
               </div>
             )}
 
-            {/* 4. Background Queue Processing States */}
-            {(status === "queued" || status === "processing") && (
-              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-3 text-blue-600 dark:text-blue-400 animate-in fade-in-50">
-                <Loader2 className="w-5 h-5 shrink-0 animate-spin" />
-                <div className="text-sm">
-                  <p className="font-semibold capitalize">
-                    {status === "queued" ? "In Queue..." : "Processing Video..."}
+            {(uiStatus === "QUEUED" ||
+              uiStatus === "DOWNLOADING" ||
+              uiStatus === "GENERATING_THUMBNAIL" ||
+              uiStatus === "UPLOADING_THUMBNAIL") && (
+              <div className="border rounded-lg p-4 space-y-3">
+                {processingSteps.map((step) => {
+                  const completed =
+                    processingSteps.indexOf(video?.status || "") >
+                    processingSteps.indexOf(step);
+
+                  const active = video?.status === step;
+
+                  return (
+                    <div key={step} className="flex items-center gap-3">
+                      {completed ? (
+                        <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      ) : active ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                      ) : (
+                        <div className="w-4 h-4 border rounded-full" />
+                      )}
+
+                      <span className="text-sm">
+                        {step.replaceAll("_", " ")}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {uiStatus === "FAILED" && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+
+                <div>
+                  <p className="font-medium text-red-500">Processing Failed</p>
+
+                  <p className="text-sm text-muted-foreground">
+                    {errorMessage || video?.failureReason}
                   </p>
-                  <p className="text-xs opacity-90">
-                    {status === "queued" 
-                      ? "Your video is waiting for an available worker." 
-                      : "Transcoding and generating optimized streaming formats."}
-                  </p>
                 </div>
               </div>
             )}
 
-            {/* 5. Error Message Banner */}
-            {status === "error" && (
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-3 text-destructive animate-in fade-in-50">
-                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-semibold">Upload Failed</p>
-                  <p className="text-xs opacity-90 mt-0.5">{errorMessage}</p>
+            {uiStatus === "COMPLETED" && video && (
+              <div className="space-y-4">
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 flex gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+
+                  <div>
+                    <p className="font-medium text-green-500">
+                      Video Processed
+                    </p>
+
+                    <p className="text-sm text-muted-foreground">
+                      Thumbnail generated successfully.
+                    </p>
+                  </div>
                 </div>
+
+                {video.thumbnail && (
+                  <img
+                    src={video.thumbnail}
+                    alt="thumbnail"
+                    className="rounded-lg border"
+                  />
+                )}
               </div>
             )}
-
-            {/* 6. Success Message Banner */}
-            {status === "success" && (
-              <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-3 text-green-600 dark:text-green-400 animate-in fade-in-50">
-                <CheckCircle2 className="w-5 h-5 shrink-0" />
-                <div className="text-sm">
-                  <p className="font-semibold">Upload Complete!</p>
-                  <p className="text-xs opacity-90">Your video has been processed and is ready to view.</p>
-                </div>
-              </div>
-            )}
-
           </CardContent>
 
-          <CardFooter className="flex justify-end gap-2 bg-muted/20 py-3 px-6 border-t">
-            {status === "success" || status === "error" ? (
-              <Button type="button" onClick={resetForm} className="w-full">
-                {status === "error" ? "Try Again" : "Upload Another Video"}
+          <CardFooter className="flex justify-end gap-3 border-t py-4">
+            {(uiStatus === "COMPLETED" || uiStatus === "FAILED") && (
+              <Button type="button" onClick={resetForm}>
+                Upload Another
               </Button>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={resetForm}
-                  disabled={isFormDisabled || (!file && status === "idle")}
-                >
-                  Reset
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={!file || !title || !description || isFormDisabled}
-                >
-                  {status === "uploading" 
-                    ? "Uploading..." 
-                    : status === "queued" || status === "processing" 
-                    ? "Processing..." 
-                    : "Start Upload"}
-                </Button>
-              </>
+            )}
+
+            {(uiStatus === "IDLE" || uiStatus === "UPLOADING") && (
+              <Button
+                type="submit"
+                disabled={
+                  !file || !title || !description || uiStatus === "UPLOADING"
+                }
+              >
+                {uiStatus === "UPLOADING" ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : null}
+
+                {uiStatus === "UPLOADING" ? "Uploading..." : "Upload Video"}
+              </Button>
             )}
           </CardFooter>
         </form>
       </Card>
     </div>
-  )
+  );
 }

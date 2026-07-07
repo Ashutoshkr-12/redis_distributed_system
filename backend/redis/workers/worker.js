@@ -1,92 +1,263 @@
 import { Worker } from "bullmq";
-
-import Redis from "ioredis";
-
 import ffmpeg from "fluent-ffmpeg";
-
 import ffmpegPath from "ffmpeg-static";
-
 import axios from "axios";
-
 import fs from "fs";
-
 import path from "path";
+import { v4 as uuid } from "uuid";
+import dotenv from "dotenv";
+import redisConnection from "../../config/redis.js";
+import cloudinary from "../../config/cloudinary.js";
+import Video from "../../models/video.model.js";
+import connectDB from "../../config/db.js";
+
+dotenv.config();
+
+await connectDB();
+
+console.log("Worker DB Connected");
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
-const connection = new Redis({
-  host: "127.0.0.1",
-  port: 6379,
+const TEMP_DIR = path.resolve("temp");
 
-  maxRetriesPerRequest: null,
-});
+if (!fs.existsSync(TEMP_DIR)) {
+  fs.mkdirSync(TEMP_DIR);
+}
 
 const worker = new Worker(
-  "video-processing",
+  "process-video",
 
   async (job) => {
-    const { videoUrl } = job.data;
+    const { videoUrl, videoId } =
+      job.data;
 
-    console.log("Processing:", videoUrl);
+    console.log(
+      `Starting Job: ${job.id}`
+    );
 
-    /*
-      download temp file
-    */
 
-    const inputPath =
-      "./temp/input.mp4";
+    const uniqueId = uuid();
 
-    const outputThumbnail =
-      "./temp/thumb.jpg";
+    const inputPath = path.join(
+      TEMP_DIR,
+      `${uniqueId}-input.mp4`
+    );
 
-    /*
-      download video
-    */
+    const thumbnailPath = path.join(
+      TEMP_DIR,
+      `${uniqueId}-thumb.jpg`
+    );
 
-    const response = await axios({
-      url: videoUrl,
+    try {
 
-      method: "GET",
+      await Video.findByIdAndUpdate(
+        videoId,
+        {
+          status: "DOWNLOADING",
+        }
+      );
 
-      responseType: "stream",
-    });
+      console.log(
+        "Downloading video..."
+      );
 
-    const writer =
-      fs.createWriteStream(inputPath);
+      const response = await axios({
+        url: videoUrl,
 
-    response.data.pipe(writer);
+        method: "GET",
 
-    await new Promise((resolve, reject) => {
-      writer.on("finish", resolve);
+        responseType: "stream",
+      });
 
-      writer.on("error", reject);
-    });
+      const writer =
+        fs.createWriteStream(inputPath);
 
-    /*
-      generate thumbnail
-    */
+      response.data.pipe(writer);
 
-    await new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
-        .screenshots({
-          timestamps: ["2"],
+      await new Promise(
+        (resolve, reject) => {
+          writer.on(
+            "finish",
+            resolve
+          );
 
-          filename: "thumb.jpg",
+          writer.on(
+            "error",
+            reject
+          );
+        }
+      );
 
-          folder: "./temp",
-        })
+      console.log(
+        "Video downloaded"
+      );
 
-        .on("end", resolve)
 
-        .on("error", reject);
-    });
+      await Video.findByIdAndUpdate(
+        videoId,
+        {
+          status:
+            "GENERATING_THUMBNAIL",
+        }
+      );
 
-    console.log("Thumbnail generated");
+      console.log(
+        "Generating thumbnail..."
+      );
+
+
+      await new Promise(
+        (resolve, reject) => {
+          ffmpeg(inputPath)
+
+            .screenshots({
+              timestamps: ["1"],
+
+              filename:
+                path.basename(
+                  thumbnailPath
+                ),
+
+              folder: TEMP_DIR,
+            })
+
+            .on("end", resolve)
+
+            .on("error", reject);
+        }
+      );
+
+      console.log(
+        "Thumbnail generated"
+      );
+
+
+      await Video.findByIdAndUpdate(
+        videoId,
+        {
+          status:
+            "UPLOADING_THUMBNAIL",
+        }
+      );
+
+      console.log(
+        "Uploading thumbnail..."
+      );
+
+
+      const uploadedThumbnail =
+        await cloudinary.uploader.upload(
+          thumbnailPath,
+
+          {
+            folder: "thumbnails",
+
+            resource_type: "image",
+          }
+        );
+
+      console.log(
+        "Thumbnail uploaded"
+      );
+
+
+      await Video.findByIdAndUpdate(
+        videoId,
+
+        {
+          thumbnail:
+            uploadedThumbnail.secure_url,
+
+          status: "COMPLETED",
+        }
+      );
+
+      console.log(
+        `Job ${job.id} completed`
+      );
+
+      return true;
+    } catch (error) {
+      console.log(
+        "Worker Error:",
+        error
+      );
+
+
+      await Video.findByIdAndUpdate(
+        videoId,
+
+        {
+          status: "FAILED",
+
+          failureReason:
+            error.message,
+        }
+      );
+
+      throw error;
+    } finally {
+
+      if (
+        fs.existsSync(inputPath)
+      ) {
+        fs.unlinkSync(inputPath);
+      }
+
+      if (
+        fs.existsSync(
+          thumbnailPath
+        )
+      ) {
+        fs.unlinkSync(
+          thumbnailPath
+        );
+      }
+    }
   },
 
   {
-    connection,
+    connection: redisConnection,
 
     concurrency: 3,
+  }
+);
+
+
+worker.on("ready", () => {
+  console.log("Worker ready");
+});
+
+worker.on(
+  "completed",
+
+  (job) => {
+    console.log(
+      `Job ${job.id} completed`
+    );
+  }
+);
+
+worker.on(
+  "failed",
+
+  (job, error) => {
+    console.log(
+      `Job ${job?.id} failed`
+    );
+
+    console.log(error);
+  }
+);
+
+worker.on(
+  "error",
+
+  (error) => {
+    console.log(
+      "Worker Connection Error:",
+      error
+    );
   }
 );

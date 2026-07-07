@@ -1,4 +1,4 @@
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URI || process.env.BACKEND_URI!;
+const BACKEND_URL = process.env.BACKEND_URI!
 
 export interface VideoRecord {
   _id: string;
@@ -20,10 +20,12 @@ export interface VideoStatusResponse {
   video?: VideoRecord;
 }
 
-
 export const uploadVideo = async (formData: FormData): Promise<UploadVideoResponse> => {
-  const res = await fetch(`${BACKEND_URL}/upload-video`, {
+  const res = await fetch(`http://localhost:8000/api/upload-video`, {
     method: "POST",
+    // headers: {
+    //   "Content-Type": "application/json"
+    // },
     body: formData,
   });
 
@@ -47,7 +49,7 @@ export const getVideoStatus = async (videoId: string): Promise<VideoStatusRespon
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => null);
-    throw new Error(errorData?.message || `Failed to fetch video status: ${res.status}`);
+    return (errorData?.message || `Failed to fetch video status: ${res.status}`);
   }
 
   return await res.json();
