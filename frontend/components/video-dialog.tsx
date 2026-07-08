@@ -1,21 +1,22 @@
 "use client";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription} from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   Card,
-  CardAction,
   CardContent,
-  CardDescription,
   CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+} from "@/components/ui/card";
+
 
 interface CustomDialogProps {
-  open: boolean
-  onChange: (open: boolean) => void
+  open: boolean;
+  onChange: (open: boolean) => void;
 }
 interface Video {
   _id: string;
@@ -33,12 +34,14 @@ interface CustomDialogProps {
   video: Video | null;
 }
 
-export default function VideoDialog({ open, onChange,video }: CustomDialogProps) {
-
-
+export default function VideoDialog({
+  open,
+  onChange,
+  video,
+}: CustomDialogProps) {
   return (
-    <Dialog  open={open} onOpenChange={onChange}>
-     <DialogContent className="max-w-3xl p-6">
+    <Dialog open={open} onOpenChange={onChange}>
+      <DialogContent className="max-w-3xl p-6">
         <DialogHeader>
           <DialogTitle>Video Preview</DialogTitle>
           <DialogDescription>
@@ -48,7 +51,6 @@ export default function VideoDialog({ open, onChange,video }: CustomDialogProps)
 
         {/* Card containing the uploader info and video player */}
         <Card className="overflow-hidden border-none shadow-none">
-          
           {/* Uploader Info Section */}
           {/* <CardHeader className="flex flex-row items-center gap-3 px-0 py-4">
             <Avatar className="h-10 w-10">
@@ -68,24 +70,26 @@ export default function VideoDialog({ open, onChange,video }: CustomDialogProps)
           {/* Video Player Section */}
           <CardContent className="px-0 pb-4">
             <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-black">
-             <video
-    src={
-        video?.compressedVideo ||
-        video?.originalVideo
-    }
-    controls
-    poster={video?.thumbnail}
-    className="w-full h-full object-contain"
-/>
+              <video
+                src={video?.compressedVideo || video?.originalVideo}
+                controls
+                poster={video?.thumbnail}
+                className="w-full h-full object-contain"
+              />
             </div>
           </CardContent>
 
           {/* Video Title and Description */}
           <CardFooter className="flex flex-col items-start px-4 pb-0">
-           <h3 className="text-xl font-semibold"><span className="text-gray-800">Title: </span>{video?.title}</h3>
-           <p className="text-xl font-semibold"><span className="text-gray-800">Description: </span>{video?.description}</p>
+            <h3 className="text-xl font-semibold">
+              <span className="text-gray-800">Title: </span>
+              {video?.title}
+            </h3>
+            <p className="text-xl font-semibold">
+              <span className="text-gray-800">Description: </span>
+              {video?.description}
+            </p>
           </CardFooter>
-          
         </Card>
       </DialogContent>
     </Dialog>

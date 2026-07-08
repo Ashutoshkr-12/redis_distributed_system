@@ -37,7 +37,7 @@ export default function VideosPage() {
     try {
       // console.log(process.env.BACKEND_URI)
       const response = await fetch(
-        `http://localhost:8000/api/video/all`
+        `${process.env.NEXT_PUBLIC_BACKEND_URI}/video/all`
       );
 
       const data = await response.json();

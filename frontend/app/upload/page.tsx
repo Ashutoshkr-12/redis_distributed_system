@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import axios from "axios";
 import {
   Card,
   CardContent,
@@ -71,6 +70,8 @@ export default function VideoUploader() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
+  // console.log(process.env.NEXT_PUBLIC_BACKEND_URI)
+
 const handleUpload = async (e: React.FormEvent) => {
   e.preventDefault();
   if (!file) return;
@@ -86,7 +87,7 @@ const handleUpload = async (e: React.FormEvent) => {
     
     formData.append("video", file);
     const response = await fetch(
-      `http://localhost:8000/api/upload-video`,
+      `${process.env.NEXT_PUBLIC_BACKEND_URI}/upload-video`,
       {
         method: "POST",
         body: formData,
@@ -140,7 +141,7 @@ pollingRef.current = setInterval(
     try {
       const response =
         await fetch(
-          `http://localhost:8000/api/video/${video._id}`
+          `${process.env.NEXT_PUBLIC_BACKEND_URI}/video/${video._id}`
         );
 
       if (!response.ok) {
