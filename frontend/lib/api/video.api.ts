@@ -20,22 +20,22 @@ export interface VideoStatusResponse {
   video?: VideoRecord;
 }
 
-export const uploadVideo = async (formData: FormData): Promise<UploadVideoResponse> => {
-  const res = await fetch(`http://localhost:8000/api/upload-video`, {
-    method: "POST",
-    // headers: {
-    //   "Content-Type": "application/json"
-    // },
-    body: formData,
-  });
+// export const uploadVideo = async (formData: FormData): Promise<UploadVideoResponse> => {
+//   const res = await fetch(`http://localhost:8000/api/upload-video`, {
+//     method: "POST",
+//     // headers: {
+//     //   "Content-Type": "application/json"
+//     // },
+//     body: formData,
+//   });
 
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => null);
-    throw new Error(errorData?.message || `Upload failed with status: ${res.status}`);
-  }
+//   if (!res.ok) {
+//     const errorData = await res.json().catch(() => null);
+//     throw new Error(errorData?.message || `Upload failed with status: ${res.status}`);
+//   }
 
-  return await res.json();
-};
+//   return await res.json();
+// };
 
 
 export const getVideoStatus = async (videoId: string): Promise<VideoStatusResponse> => {

@@ -23,6 +23,8 @@ import {
   FileVideo,
   X,
 } from "lucide-react";
+import Link from "next/link";
+import { UserButton } from "@clerk/nextjs";
 
 type VideoStatus =
   | "IDLE"
@@ -84,7 +86,7 @@ const handleUpload = async (e: React.FormEvent) => {
     
     formData.append("video", file);
     const response = await fetch(
-      "http://localhost:8000/api/upload-video",
+      `http://localhost:8000/api/upload-video`,
       {
         method: "POST",
         body: formData,
@@ -103,7 +105,7 @@ const handleUpload = async (e: React.FormEvent) => {
 
     const data = await response.json();
 
-    console.log("UPLOAD DATA:", data);
+    // console.log("UPLOAD DATA:", data);
 
     setUploadProgress(100);
 
@@ -235,8 +237,24 @@ pollingRef.current = setInterval(
               ? 100
               : uploadProgress;
 
-  return (
-    <div className="min-h-screen bg-muted/40 flex items-center justify-center p-6">
+ return (
+  <div className="min-h-screen bg-muted/40">
+    {/* Header */}
+    <header className="h-20 px-8 flex items-center justify-end border-b bg-background">
+      <UserButton
+        appearance={{
+          elements: {
+            userButtonAvatarBox: {
+              width: "40px",
+              height: "40px",
+            },
+          },
+        }}
+      />
+    </header>
+
+    {/* Main */}
+    <main className="flex items-center justify-center p-6">
       <Card className="w-full max-w-2xl shadow-xl">
         <CardHeader>
           <CardTitle>Distributed Video Processing</CardTitle>
@@ -436,9 +454,17 @@ pollingRef.current = setInterval(
                 {uiStatus === "UPLOADING" ? "Uploading..." : "Upload Video"}
               </Button>
             )}
+
+          <Link href={'/videos'}>
+          <Button>
+        GO TO VIDEOS
+      </Button>
+          </Link>
           </CardFooter>
         </form>
       </Card>
-    </div>
-  );
+    </main>
+  </div>
+);
 }
+
