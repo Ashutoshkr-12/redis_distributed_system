@@ -6,10 +6,7 @@ import crypto from "crypto";
 import fs from "fs";
 
 
-export const uploadVideo = async (
-  req,
-  res
-) => {
+export const uploadVideo = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -18,26 +15,15 @@ export const uploadVideo = async (
       });
     }
 
-    /*
-      upload video to cloudinary
-    */
-
     const uploadedVideo =
       await cloudinary.uploader.upload(
         req.file.path,
-
         {
           resource_type: "video",
-
           folder: "videos",
-
           timeout: 600000,
         }
       );
-
-    /*
-      remove local uploaded file
-    */
 
     if (
       fs.existsSync(req.file.path)
@@ -45,10 +31,7 @@ export const uploadVideo = async (
       fs.unlinkSync(req.file.path);
     }
 
-    /*
-      save db
-    */
-
+  
     const video = await Video.create({
       title: req.body.title,
 
@@ -61,9 +44,6 @@ export const uploadVideo = async (
       status: "QUEUED",
     });
 
-    /*
-      add queue job
-    */
 
     await videoQueue.add(
       "process-video",
@@ -81,9 +61,6 @@ export const uploadVideo = async (
       }
     );
 
-    /*
-      response
-    */
 
     return res.status(201).json({
       success: true,
@@ -99,9 +76,6 @@ export const uploadVideo = async (
       error
     );
 
-    /*
-      cleanup failed upload
-    */
 
     if (
       req.file?.path &&
