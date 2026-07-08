@@ -11,14 +11,14 @@ import cloudinary from "../../config/cloudinary.js";
 import Video from "../../models/video.model.js";
 import connectDB from "../../config/db.js";
 
-dotenv.config();
+const env = dotenv.config('../../env');
+console.log('env',env)
 
-await connectDB();
-
-console.log("Worker DB Connected");
+await connectDB().then(() => {
+  console.log("Worker DB Connected");
+})
 
 ffmpeg.setFfmpegPath(ffmpegPath);
-
 const TEMP_DIR = path.resolve("temp");
 
 if (!fs.existsSync(TEMP_DIR)) {
@@ -27,7 +27,7 @@ if (!fs.existsSync(TEMP_DIR)) {
 
 const worker = new Worker(
   "process-video",
-
+  
   async (job) => {
     const { videoUrl, videoId } =
       job.data;
@@ -36,9 +36,7 @@ const worker = new Worker(
       `Starting Job: ${job.id}`
     );
 
-
     const uniqueId = uuid();
-
     const inputPath = path.join(
       TEMP_DIR,
       `${uniqueId}-input.mp4`
@@ -50,9 +48,9 @@ const worker = new Worker(
     );
 
     try {
-
+      
       await Video.findByIdAndUpdate(
-        videoId,
+        job.id,
         {
           status: "DOWNLOADING",
         }
@@ -64,14 +62,11 @@ const worker = new Worker(
 
       const response = await axios({
         url: videoUrl,
-
         method: "GET",
-
         responseType: "stream",
       });
 
-      const writer =
-        fs.createWriteStream(inputPath);
+      const writer = fs.createWriteStream(inputPath);
 
       response.data.pipe(writer);
 
@@ -95,7 +90,7 @@ const worker = new Worker(
 
 
       await Video.findByIdAndUpdate(
-        videoId,
+        job.id,
         {
           status:
             "GENERATING_THUMBNAIL",
@@ -134,7 +129,7 @@ const worker = new Worker(
 
 
       await Video.findByIdAndUpdate(
-        videoId,
+        job.id,
         {
           status:
             "UPLOADING_THUMBNAIL",
@@ -219,7 +214,6 @@ const worker = new Worker(
 
   {
     connection: redisConnection,
-
     concurrency: 3,
   }
 );

@@ -5,24 +5,17 @@ import { Server } from "socket.io";
 import cors from 'cors';
 import connectDB from './config/db.js';
 
-// 1. FIX: Correct dotenv syntax (defaults to looking for a '.env' file in the root)
 dotenv.config(); 
 
 const PORT = process.env.PORT;
-const allowedOrigins = ["*"]; 
 
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true
-}));
+app.use(cors());
 
 const server = http.createServer(app);
 
-// 3. FIX: Removed the extra brackets around allowedOrigins
 export const io = new Server(server, {
     cors: {
-        origin: allowedOrigins,
+        origin: ['*'],
         methods: ["GET", "POST" , 'PUT', 'DELETE']
     }
 });
