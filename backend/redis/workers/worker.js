@@ -5,15 +5,21 @@ import axios from "axios";
 import fs from "fs";
 import path from "path";
 import { v4 as uuid } from "uuid";
-import dotenv from "dotenv";
 import redisConnection from "../../config/redis.js";
 import cloudinary from "../../config/cloudinary.js";
 import Video from "../../models/video.model.js";
 import connectDB from "../../config/db.js";
+import dotenv from "dotenv";
+import { fileURLToPath } from "url";
 
-const env = dotenv.config('../../env');
-console.log('env',env)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+dotenv.config({
+  path: path.resolve(__dirname, "../../.env"),
+});
+
+// console.log(process.env.MONGODB_URI);
 await connectDB().then(() => {
   console.log("Worker DB Connected");
 })

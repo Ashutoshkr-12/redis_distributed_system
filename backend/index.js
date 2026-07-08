@@ -5,7 +5,8 @@ import { Server } from "socket.io";
 import cors from 'cors';
 import connectDB from './config/db.js';
 
-dotenv.config(); 
+const env  = dotenv.config(); 
+// console.log('env:',env)
 
 const PORT = process.env.PORT;
 

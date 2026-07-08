@@ -3,8 +3,9 @@ import Redis from 'ioredis';
 import videoRoutes from "./routes/video.route.js"
 import router from './routes/video.route.js';
 import cors from 'cors'
+import dotenv from 'dotenv'
 
-
+dotenv.config();
 
 const app = express();
 
