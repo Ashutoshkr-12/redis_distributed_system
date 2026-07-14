@@ -1,6 +1,6 @@
 import streamifier from "streamifier";
-import cloudinary from "../config/cloudinary.js";
-import Video from "../models/video.model.js";
+import cloudinary from "../config/cloudinary.js"
+import Video from "../../models/video.model.js";
 import { videoQueue } from "../redis/queues/video.queue.js";
 import crypto from "crypto";
 import fs from "fs";
@@ -15,16 +15,13 @@ export const uploadVideo = async (req, res) => {
       });
     }
 
-    const uploadedVideo =
-      await cloudinary.uploader.upload(
-        req.file.path,
-        {
-          resource_type: "video",
-          folder: "videos",
-          timeout: 600000,
-        }
-      );
-
+  const uploadedVideo = await cloudinary.uploader.upload(
+  req.file.path,
+  {
+    resource_type: "video",
+    folder: "videos",
+  }
+);
     if (
       fs.existsSync(req.file.path)
     ) {

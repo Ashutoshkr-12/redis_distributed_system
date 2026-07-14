@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useRef, useState } from "react";
 import {
   Card,
@@ -37,17 +36,11 @@ type VideoStatus =
 
 interface Video {
   _id: string;
-
   title: string;
-
   status: VideoStatus;
-
   thumbnail?: string;
-
   originalVideo?: string;
-
   compressedVideo?: string;
-
   failureReason?: string;
 }
 
@@ -109,10 +102,9 @@ const handleUpload = async (e: React.FormEvent) => {
     // console.log("UPLOAD DATA:", data);
 
     setUploadProgress(100);
-
     setVideo(data.video);
-
     setUiStatus("QUEUED");
+
   } catch (error: any) {
     console.log(
       "UPLOAD ERROR:",
@@ -168,11 +160,7 @@ pollingRef.current = setInterval(
       );
 
       if (
-        updatedVideo.status ===
-          "COMPLETED" ||
-        updatedVideo.status ===
-          "FAILED"
-      ) {
+        updatedVideo.status === "COMPLETED" || updatedVideo.status === "FAILED" ) {
         if (pollingRef.current) {
           clearInterval(
             pollingRef.current
@@ -187,7 +175,12 @@ pollingRef.current = setInterval(
     }
   },
 
-  3000
+  300
+);
+console.log("Polling ID:", video._id);
+console.log(
+  "Polling URL:",
+  `${process.env.NEXT_PUBLIC_BACKEND_URI}/video/${video._id}`
 );
 
 
@@ -200,17 +193,11 @@ pollingRef.current = setInterval(
 
   const resetForm = () => {
     setFile(null);
-
     setTitle("");
-
     setDescription("");
-
     setVideo(null);
-
     setUiStatus("IDLE");
-
     setUploadProgress(0);
-
     setErrorMessage("");
 
     if (fileInputRef.current) {

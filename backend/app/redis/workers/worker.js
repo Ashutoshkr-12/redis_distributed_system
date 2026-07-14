@@ -1,46 +1,54 @@
 import { Worker } from "bullmq";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegPath from "ffmpeg-static";
+import dotenv from "dotenv"
+import { v2 as cloudinary} from "cloudinary"
 import axios from "axios";
 import fs from "fs";
 import path from "path";
 import { v4 as uuid } from "uuid";
 import redisConnection from "../../config/redis.js";
-import cloudinary from "../../config/cloudinary.js";
-import Video from "../../models/video.model.js";
-import connectDB from "../../config/db.js";
-import dotenv from "dotenv";
+import Video from "../../../models/video.model.js"
+import connectDB from "../../config/db.js"
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config({
-  path: path.resolve(__dirname, "../../.env"),
+dotenv.config(
+  {
+  path: path.resolve(__dirname, "../../../.env"),
+}
+)
+
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// console.log(process.env.MONGODB_URI);
 await connectDB().then(() => {
   console.log("Worker DB Connected");
 })
 
 ffmpeg.setFfmpegPath(ffmpegPath);
-const TEMP_DIR = path.resolve("temp");
-
-if (!fs.existsSync(TEMP_DIR)) {
-  fs.mkdirSync(TEMP_DIR);
-}
+const TEMP_DIR = path.join(__dirname, "../../temp");
+fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 const worker = new Worker(
   "process-video",
-  
+
   async (job) => {
-    const { videoUrl, videoId } =
-      job.data;
+    const { videoUrl, videoId } = job.data;
 
     console.log(
       `Starting Job: ${job.id}`
     );
+
+    console.log("JOB DATA:", job.data);
+    console.log("videoUrl:", videoUrl);
+    console.log("videoId:", videoId);
 
     const uniqueId = uuid();
     const inputPath = path.join(
@@ -54,7 +62,6 @@ const worker = new Worker(
     );
 
     try {
-      
       await Video.findByIdAndUpdate(
         job.id,
         {
@@ -94,7 +101,6 @@ const worker = new Worker(
         "Video downloaded"
       );
 
-
       await Video.findByIdAndUpdate(
         job.id,
         {
@@ -107,14 +113,12 @@ const worker = new Worker(
         "Generating thumbnail..."
       );
 
-
       await new Promise(
         (resolve, reject) => {
           ffmpeg(inputPath)
 
             .screenshots({
               timestamps: ["1"],
-
               filename:
                 path.basename(
                   thumbnailPath
@@ -122,9 +126,7 @@ const worker = new Worker(
 
               folder: TEMP_DIR,
             })
-
             .on("end", resolve)
-
             .on("error", reject);
         }
       );
@@ -132,7 +134,6 @@ const worker = new Worker(
       console.log(
         "Thumbnail generated"
       );
-
 
       await Video.findByIdAndUpdate(
         job.id,
@@ -145,31 +146,25 @@ const worker = new Worker(
       console.log(
         "Uploading thumbnail..."
       );
-
+      console.log(process.env.CLOUDINARY_API_KEY);
+      // console.log("Current config:", cloudinary.config());
 
       const uploadedThumbnail =
         await cloudinary.uploader.upload(
           thumbnailPath,
-
           {
-            folder: "thumbnails",
-
+            folder: "thumbnailaths",
             resource_type: "image",
           }
         );
 
-      console.log(
-        "Thumbnail uploaded"
-      );
-
+      console.log("Thumbnail uploaded",uploadedThumbnail.secure_url);
 
       await Video.findByIdAndUpdate(
         videoId,
-
         {
           thumbnail:
             uploadedThumbnail.secure_url,
-
           status: "COMPLETED",
         }
       );
@@ -182,13 +177,10 @@ const worker = new Worker(
     } catch (error) {
       console.log(
         "Worker Error:",
-        error
+        error.stack
       );
-
-
       await Video.findByIdAndUpdate(
         videoId,
-
         {
           status: "FAILED",
 
@@ -246,7 +238,6 @@ worker.on(
     console.log(
       `Job ${job?.id} failed`
     );
-
     console.log(error);
   }
 );

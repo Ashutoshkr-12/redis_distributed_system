@@ -1,31 +1,29 @@
-import { app } from "./app.js";
+import express from 'express';
 import dotenv from 'dotenv';
-import http from 'http';
-import { Server } from "socket.io";
-import cors from 'cors';
-import connectDB from './config/db.js';
+dotenv.config() 
+import videoRoutes from './app/routes/video.route.js';
+import cors from 'cors'
+import { v2 as Cloudinary } from "cloudinary";
+import connectDB from './app/config/db.js';
 
-const env  = dotenv.config(); 
+const app = express();
 // console.log('env:',env)
 
 const PORT = process.env.PORT;
 
 app.use(cors());
-
-const server = http.createServer(app);
-
-export const io = new Server(server, {
-    cors: {
-        origin: ['*'],
-        methods: ["GET", "POST" , 'PUT', 'DELETE']
-    }
-});
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 connectDB().then(() => {
-    server.listen(PORT, () => {
+    app.listen(PORT, () => {
         console.log(`Server running on port http://localhost:${PORT}`);
     });
 }).catch((err) => {
     console.error("Error in DB Connection:", err);
     process.exit(1);
 });
+
+app.use('/api/',videoRoutes)
+
+export {app}
